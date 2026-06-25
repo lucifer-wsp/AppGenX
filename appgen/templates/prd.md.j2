@@ -1,0 +1,79 @@
+# {{ prd.product_name }} — 产品需求文档 (PRD)
+
+> 由 AppGen Agent 自动生成 · 需人工 Review 后定稿
+
+## 1. 产品概述
+
+- **产品名称**: {{ prd.product_name }}
+- **一句话定位**: {{ prd.tagline }}
+
+## 2. 背景与机会
+
+{{ prd.background }}
+
+## 3. 目标用户
+
+{% for user in prd.target_audience %}
+- {{ user }}
+{% endfor %}
+
+## 4. 用户需求
+
+{% for need in prd.user_needs %}
+- {{ need }}
+{% endfor %}
+
+## 5. 竞品格局
+
+{% for item in prd.competitive_landscape %}
+- {{ item }}
+{% endfor %}
+
+## 6. 功能设计
+
+### 6.1 核心功能
+
+{% for f in prd.core_features %}
+- {{ f }}
+{% endfor %}
+
+### 6.2 MVP 范围
+
+{% for f in prd.mvp_features %}
+- {{ f }}
+{% endfor %}
+
+### 6.3 后续迭代 (V2+)
+
+{% for f in prd.later_features %}
+- {{ f }}
+{% endfor %}
+
+### 6.4 明确不做 (NOT-DO)
+
+{% for f in prd.not_doing %}
+- {{ f }}
+{% endfor %}
+
+## 7. 付费模式
+
+{% for tier in prd.monetization %}
+### {{ tier.name }} — {{ tier.price }}
+
+{% for feat in tier.features %}
+- {{ feat }}
+{% endfor %}
+
+{% endfor %}
+
+## 8. 迭代路线图
+
+{% for step in prd.iteration_roadmap %}
+- {{ step }}
+{% endfor %}
+
+## 9. 风险与应对
+
+{% for risk in prd.risks %}
+- {{ risk }}
+{% endfor %}

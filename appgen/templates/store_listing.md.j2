@@ -1,0 +1,46 @@
+# {{ listing.app_name }} — App Store 上架物料
+
+## 基本信息
+
+- **建议 Bundle ID**: `{{ listing.bundle_id_suggestion }}`
+- **主分类**: {{ listing.category_primary }}
+{% if listing.category_secondary %}
+- **副分类**: {{ listing.category_secondary }}
+{% endif %}
+- **年龄分级说明**: {{ listing.age_rating_notes }}
+
+## 隐私政策大纲
+
+{{ listing.privacy_policy_outline }}
+
+## 多语言 Metadata
+
+{% for meta in listing.metadata %}
+### {{ meta.locale }}
+
+| 字段 | 内容 |
+|------|------|
+| 标题 | {{ meta.title }} |
+| 副标题 | {{ meta.subtitle }} |
+| 关键词 | {{ meta.keywords | join(', ') }} |
+| 推广文案 | {{ meta.promotional_text }} |
+
+**描述**
+
+{{ meta.description }}
+
+**更新说明**
+
+{{ meta.whats_new }}
+
+{% endfor %}
+
+## 截图文案
+
+{% for caption in listing.screenshot_captions %}
+- {{ caption }}
+{% endfor %}
+
+## 提交审核备注
+
+{{ listing.review_notes_for_apple }}

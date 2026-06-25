@@ -1,0 +1,55 @@
+# {{ prd.product_name }} — 设计规格
+
+> 由 AppGen Agent 自动生成 · 简易设计稿（UI / 交互 / 文案）
+
+## 设计原则
+
+{% for p in design.design_principles %}
+- {{ p }}
+{% endfor %}
+
+## 视觉规范
+
+### 色板
+
+{% for key, value in design.color_palette.items() %}
+- **{{ key }}**: `{{ value }}`
+{% endfor %}
+
+### 字体
+
+{% for key, value in design.typography.items() %}
+- **{{ key }}**: {{ value }}
+{% endfor %}
+
+## 页面规格
+
+{% for screen in design.screens %}
+### {{ screen.name }}
+
+- **用途**: {{ screen.purpose }}
+- **导航**: {{ screen.navigation }}
+
+#### UI 元素
+
+{% for el in screen.ui_elements %}
+- {{ el }}
+{% endfor %}
+
+#### 交互
+
+{% for action in screen.interactions %}
+- {{ action }}
+{% endfor %}
+
+#### 文案
+
+{% for key, value in screen.ui_copy.items() %}
+- **{{ key }}**: {{ value }}
+{% endfor %}
+
+{% endfor %}
+
+## 线框说明
+
+{{ design.wireframe_notes }}
