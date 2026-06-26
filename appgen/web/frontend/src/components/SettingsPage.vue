@@ -28,6 +28,8 @@ const form = reactive({
   auto_review_default: false,
   llm_provider_mode: 'auto',
   llm_providers: [],
+  llm_analyze_providers: [],
+  llm_code_providers: [],
   rss_marketing_url: '',
   rss_legacy_top_url: '',
   rss_legacy_genre_url: '',
@@ -156,6 +158,22 @@ function applyData(data) {
     _set: p.api_key_set,
   }))
   if (!form.llm_providers.length) form.llm_providers = [newProvider()]
+  form.llm_analyze_providers = (data.llm_analyze_providers || []).map((p) => ({
+    provider: p.provider,
+    api_key: '',
+    base_url: p.base_url || '',
+    model: p.model || '',
+    _preview: p.api_key_preview,
+    _set: p.api_key_set,
+  }))
+  form.llm_code_providers = (data.llm_code_providers || []).map((p) => ({
+    provider: p.provider,
+    api_key: '',
+    base_url: p.base_url || '',
+    model: p.model || '',
+    _preview: p.api_key_preview,
+    _set: p.api_key_set,
+  }))
   form.rss_marketing_url = data.rss_marketing_url || ''
   form.rss_legacy_top_url = data.rss_legacy_top_url || ''
   form.rss_legacy_genre_url = data.rss_legacy_genre_url || ''
@@ -254,6 +272,18 @@ function buildPayload() {
     auto_review_default: form.auto_review_default,
     llm_provider_mode: form.llm_provider_mode,
     llm_providers: form.llm_providers.map((p) => ({
+      provider: p.provider,
+      api_key: p.api_key || '',
+      base_url: p.base_url || '',
+      model: p.model || '',
+    })),
+    llm_analyze_providers: form.llm_analyze_providers.map((p) => ({
+      provider: p.provider,
+      api_key: p.api_key || '',
+      base_url: p.base_url || '',
+      model: p.model || '',
+    })),
+    llm_code_providers: form.llm_code_providers.map((p) => ({
       provider: p.provider,
       api_key: p.api_key || '',
       base_url: p.base_url || '',
@@ -404,6 +434,65 @@ onMounted(load)
                 type="password"
                 show-password-on="click"
                 :placeholder="value._set ? `已配置 ${value._preview}` : 'API Key'"
+              />
+              <n-input
+                v-if="value.provider === 'openai'"
+                v-model:value="value.base_url"
+                placeholder="OpenAI Base URL"
+              />
+            </n-space>
+          </template>
+        </n-dynamic-input>
+
+        <n-divider />
+        <p class="section-hint">
+          分析阶段（榜单 LLM 机会挖掘）与编码阶段（DevCode/DevVerify）可单独配置模型。
+          留空则回退到上方默认链；API Key 留空表示沿用已保存值或默认链中的 Key。
+        </p>
+        <div class="catalog-title">分析阶段 LLM</div>
+        <n-dynamic-input v-model:value="form.llm_analyze_providers" :on-create="newProvider">
+          <template #default="{ value }">
+            <n-space vertical style="width: 100%">
+              <n-space>
+                <AdaptiveSelect v-model:value="value.provider" :options="providerOptions" style="width: 160px" />
+                <n-input
+                  v-model:value="value.model"
+                  :placeholder="value.provider === 'cursor' ? '如 gpt-4o-mini' : '如 gpt-4o-mini'"
+                  style="width: 200px"
+                />
+              </n-space>
+              <n-input
+                v-model:value="value.api_key"
+                type="password"
+                show-password-on="click"
+                :placeholder="value._set ? `已配置 ${value._preview}` : 'API Key（可选，留空沿用默认链）'"
+              />
+              <n-input
+                v-if="value.provider === 'openai'"
+                v-model:value="value.base_url"
+                placeholder="OpenAI Base URL"
+              />
+            </n-space>
+          </template>
+        </n-dynamic-input>
+
+        <div class="catalog-title" style="margin-top: 16px">编码阶段 LLM</div>
+        <n-dynamic-input v-model:value="form.llm_code_providers" :on-create="newProvider">
+          <template #default="{ value }">
+            <n-space vertical style="width: 100%">
+              <n-space>
+                <AdaptiveSelect v-model:value="value.provider" :options="providerOptions" style="width: 160px" />
+                <n-input
+                  v-model:value="value.model"
+                  :placeholder="value.provider === 'cursor' ? '如 composer-2.5' : '如 gpt-4o'"
+                  style="width: 200px"
+                />
+              </n-space>
+              <n-input
+                v-model:value="value.api_key"
+                type="password"
+                show-password-on="click"
+                :placeholder="value._set ? `已配置 ${value._preview}` : 'API Key（可选，留空沿用默认链）'"
               />
               <n-input
                 v-if="value.provider === 'openai'"

@@ -13,13 +13,22 @@ from pydantic import BaseModel
 from appgen.constants import (
     DEFAULT_LLM_BASE_URL,
     DEFAULT_LLM_MODEL,
+    LLM_PROFILE_ANALYZE,
+    LLM_PROFILE_CODE,
+    LLM_PROFILE_DEFAULT,
     LLM_PROVIDER_CURSOR,
     LLM_PROVIDER_MOCK,
     LLM_PROVIDER_OPENAI,
+    LLMProfileKind,
     PLACEHOLDER_CURSOR_KEY,
     PLACEHOLDER_OPENAI_KEY,
 )
-from appgen.runtime_settings import LLMProviderConfig, runtime_settings
+from appgen.runtime_settings import (
+    LLMProviderConfig,
+    _chain_has_usable_providers,
+    merge_stage_providers_with_fallback,
+    runtime_settings,
+)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -429,7 +438,20 @@ def _valid_cursor_key(api_key: str) -> bool:
     return bool(text) and text != PLACEHOLDER_CURSOR_KEY and not _is_suspicious_llm_key(text)
 
 
-def build_provider_chain() -> list[LLMProviderConfig]:
+def _provider_source_for_profile(profile: LLMProfileKind) -> list[LLMProviderConfig]:
+    rc = runtime_settings.get()
+    if profile == LLM_PROFILE_ANALYZE and rc.llm_analyze_providers:
+        merged = merge_stage_providers_with_fallback(rc.llm_analyze_providers, rc.llm_providers)
+        if _chain_has_usable_providers(merged):
+            return merged
+    if profile == LLM_PROFILE_CODE and rc.llm_code_providers:
+        merged = merge_stage_providers_with_fallback(rc.llm_code_providers, rc.llm_providers)
+        if _chain_has_usable_providers(merged):
+            return merged
+    return rc.llm_providers
+
+
+def build_provider_chain(profile: LLMProfileKind = LLM_PROFILE_DEFAULT) -> list[LLMProviderConfig]:
     rc = runtime_settings.get()
     mode = (rc.llm_provider_mode or "auto").lower()
 
@@ -443,7 +465,7 @@ def build_provider_chain() -> list[LLMProviderConfig]:
             return _valid_openai_key(entry.api_key)
         return False
 
-    chain = [entry for entry in rc.llm_providers if is_valid(entry)]
+    chain = [entry for entry in _provider_source_for_profile(profile) if is_valid(entry)]
 
     if mode == LLM_PROVIDER_OPENAI:
         return [entry for entry in chain if entry.provider == LLM_PROVIDER_OPENAI]
@@ -454,8 +476,8 @@ def build_provider_chain() -> list[LLMProviderConfig]:
     return chain
 
 
-def resolve_provider() -> ProviderName:
-    chain = build_provider_chain()
+def resolve_provider(profile: LLMProfileKind = LLM_PROFILE_DEFAULT) -> ProviderName:
+    chain = build_provider_chain(profile)
     if not chain:
         return LLM_PROVIDER_MOCK
 
@@ -496,11 +518,11 @@ class LLMClient:
     def clear_pipeline_context(self) -> None:
         self._pipeline_context = {}
 
-    def _providers_configured(self) -> bool:
-        return bool(build_provider_chain())
+    def _providers_configured(self, profile: LLMProfileKind = LLM_PROFILE_DEFAULT) -> bool:
+        return bool(build_provider_chain(profile))
 
-    def _fail_or_mock(self, model_type: type[T], *, reason: str) -> T:
-        if self._providers_configured():
+    def _fail_or_mock(self, model_type: type[T], *, reason: str, profile: LLMProfileKind = LLM_PROFILE_DEFAULT) -> T:
+        if self._providers_configured(profile):
             clean = _sanitize_llm_error_detail(reason.removeprefix("LLM 调用失败："))
             hint = _llm_failure_hint(clean)
             raise LLMCallError(f"LLM 调用失败：{clean} {hint}")
@@ -508,13 +530,17 @@ class LLMClient:
 
     @property
     def provider(self) -> ProviderName:
-        if self._provider is None:
-            self._provider = resolve_provider()
-        return self._provider
+        return self.provider_for(LLM_PROFILE_DEFAULT)
+
+    def provider_for(self, profile: LLMProfileKind = LLM_PROFILE_DEFAULT) -> ProviderName:
+        return resolve_provider(profile)
 
     @property
     def enabled(self) -> bool:
-        return self.provider != LLM_PROVIDER_MOCK
+        return self.enabled_for(LLM_PROFILE_DEFAULT)
+
+    def enabled_for(self, profile: LLMProfileKind = LLM_PROFILE_DEFAULT) -> bool:
+        return self.provider_for(profile) != LLM_PROVIDER_MOCK
 
     def chat(
         self,
@@ -524,8 +550,9 @@ class LLMClient:
         temperature: float = 0.4,
         json_mode: bool = False,
         on_progress: Callable[[str, int], None] | None = None,
+        profile: LLMProfileKind = LLM_PROFILE_DEFAULT,
     ) -> str:
-        chain = build_provider_chain()
+        chain = build_provider_chain(profile)
         if not chain:
             self._last_chat_error = ""
             return json.dumps({"message": "mock"}, ensure_ascii=False)
@@ -592,8 +619,9 @@ class LLMClient:
         *,
         temperature: float = 0.3,
         on_progress: Callable[[str, int], None] | None = None,
+        profile: LLMProfileKind = LLM_PROFILE_DEFAULT,
     ) -> T:
-        if not build_provider_chain():
+        if not build_provider_chain(profile):
             return model_type.model_validate(self._mock_data_for(model_type))
 
         schema_hint = json.dumps(model_type.model_json_schema(), ensure_ascii=False, indent=2)
@@ -623,6 +651,7 @@ class LLMClient:
                 temperature=temperature,
                 json_mode=True,
                 on_progress=on_progress,
+                profile=profile,
             )
             try:
                 data = self._extract_json(raw)
@@ -631,6 +660,7 @@ class LLMClient:
                     return self._fail_or_mock(
                         model_type,
                         reason=f"LLM 调用失败：{detail}",
+                        profile=profile,
                     )
                 obj = self._coerce_to_model_dict(data, model_type)
                 return model_type.model_validate(obj)
@@ -642,6 +672,7 @@ class LLMClient:
         return self._fail_or_mock(
             model_type,
             reason=f"LLM 返回格式无效（{last_error}）",
+            profile=profile,
         )
 
     def _schema_keys(self, model_type: type[BaseModel]) -> tuple[set[str], set[str]]:

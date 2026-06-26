@@ -138,6 +138,8 @@ class OpportunityFeedbackRequest(BaseModel):
 class SettingsUpdateRequest(BaseModel):
     auto_review_default: bool | None = None
     llm_providers: list[LLMProviderConfig] | None = None
+    llm_analyze_providers: list[LLMProviderConfig] | None = None
+    llm_code_providers: list[LLMProviderConfig] | None = None
     llm_provider_mode: str | None = None
     rss_marketing_url: str | None = None
     rss_legacy_top_url: str | None = None

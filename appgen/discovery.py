@@ -14,6 +14,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from appgen.config import settings
+from appgen.constants import LLM_PROFILE_ANALYZE
 from appgen.llm import LLMClient
 from appgen.models import AppStoreApp
 from appgen.scan_cancel import ScanCancelledError, is_requested as scan_cancel_requested, register as register_scan_cancel, unregister as unregister_scan_cancel
@@ -880,10 +881,10 @@ class MarketScanner:
                 "输出需引用本批榜单中的具体应用名/评分/描述作为 evidence。"
             )
 
-        if not self.llm.enabled:
+        if not self.llm.enabled_for(LLM_PROFILE_ANALYZE):
             return self._mock_opportunities(briefs)
 
-        raw = self.llm.chat(system, user, temperature=0.35, json_mode=True)
+        raw = self.llm.chat(system, user, temperature=0.35, json_mode=True, profile=LLM_PROFILE_ANALYZE)
         items = self._parse_opportunity_items(self.llm.extract_json_list(raw))
         items = self._filter_by_user_feedback(items)
         if not items:
@@ -1039,7 +1040,7 @@ class MarketScanner:
         batch_size = max(1, settings.appgen_analyze_batch_size)
         batches = [briefs[i : i + batch_size] for i in range(0, len(briefs), batch_size)]
         concurrency = max(1, settings.appgen_analyze_concurrency)
-        if self.llm.provider == "cursor":
+        if self.llm.provider_for(LLM_PROFILE_ANALYZE) == "cursor":
             scan.log(
                 f"Cursor CLI 错峰并发：{concurrency} 路，"
                 f"启动间隔 {settings.appgen_cursor_launch_stagger_ms}ms + "

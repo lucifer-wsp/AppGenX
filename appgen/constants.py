@@ -11,6 +11,12 @@ LLM_PROVIDER_MOCK: Final = "mock"
 
 LLMProviderKind = Literal["cursor", "openai", "mock"]
 
+# LLM 调用场景：default=流水线通用；analyze=扫描分析；code=DevCode/DevVerify
+LLMProfileKind = Literal["default", "analyze", "code"]
+LLM_PROFILE_DEFAULT: Final = "default"
+LLM_PROFILE_ANALYZE: Final = "analyze"
+LLM_PROFILE_CODE: Final = "code"
+
 PLACEHOLDER_OPENAI_KEY: Final = "sk-your-key"
 PLACEHOLDER_CURSOR_KEY: Final = "cursor_your_key"
 

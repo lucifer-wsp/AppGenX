@@ -101,6 +101,8 @@ def _default_region_presets() -> dict[str, list[str]]:
 class RuntimeSettings(BaseModel):
     auto_review_default: bool = False
     llm_providers: list[LLMProviderConfig] = Field(default_factory=list)
+    llm_analyze_providers: list[LLMProviderConfig] = Field(default_factory=list)
+    llm_code_providers: list[LLMProviderConfig] = Field(default_factory=list)
 
     rss_marketing_url: str = DEFAULT_RSS_MARKETING_URL
     rss_legacy_top_url: str = DEFAULT_RSS_LEGACY_TOP_URL
@@ -222,6 +224,60 @@ def default_llm_providers_from_env(
     return chain
 
 
+def merge_stage_providers_with_fallback(
+    stage: list[LLMProviderConfig],
+    fallback: list[LLMProviderConfig],
+) -> list[LLMProviderConfig]:
+    """阶段专用链可只覆盖 model；api_key/base_url 留空时从默认链继承。"""
+    if not stage:
+        return []
+    fallback_by_provider = {entry.provider: entry for entry in fallback}
+    merged: list[LLMProviderConfig] = []
+    for entry in stage:
+        base = fallback_by_provider.get(entry.provider)
+        merged.append(
+            LLMProviderConfig(
+                provider=entry.provider,
+                api_key=(entry.api_key or (base.api_key if base else "")).strip(),
+                base_url=(entry.base_url or (base.base_url if base else "")).strip(),
+                model=(entry.model or (base.model if base else "")).strip(),
+            )
+        )
+    return merged
+
+
+def stage_llm_providers_from_env(
+    base: list[LLMProviderConfig],
+    *,
+    cursor_model: str = "",
+    openai_model: str = "",
+) -> list[LLMProviderConfig]:
+    """基于默认 provider 链复制 API Key，仅覆盖模型名（用于分析/编码分场景配置）。"""
+    cursor_override = (cursor_model or "").strip()
+    openai_override = (openai_model or "").strip()
+    if not cursor_override and not openai_override:
+        return []
+    if not base:
+        return []
+
+    result: list[LLMProviderConfig] = []
+    for entry in base:
+        model = entry.model
+        if entry.provider == LLM_PROVIDER_CURSOR and cursor_override:
+            model = cursor_override
+        elif entry.provider == LLM_PROVIDER_OPENAI and openai_override:
+            model = openai_override
+        result.append(
+            LLMProviderConfig(
+                provider=entry.provider,
+                api_key=entry.api_key,
+                base_url=entry.base_url,
+                model=model,
+            )
+        )
+    return result
+
+
 def _mask_secret(value: str) -> dict[str, Any]:
     text = (value or "").strip()
     if not text:
@@ -270,14 +326,25 @@ class RuntimeSettingsManager:
 
     @staticmethod
     def _settings_from_env(env_settings: Any, workspace: Path) -> RuntimeSettings:
+        base_providers = default_llm_providers_from_env(
+            cursor_api_key=getattr(env_settings, "cursor_api_key", ""),
+            cursor_model=getattr(env_settings, "cursor_model", DEFAULT_CURSOR_MODEL),
+            openai_api_key=getattr(env_settings, "llm_api_key", ""),
+            openai_base_url=getattr(env_settings, "llm_base_url", DEFAULT_LLM_BASE_URL),
+            openai_model=getattr(env_settings, "llm_model", DEFAULT_LLM_MODEL),
+        )
         return RuntimeSettings(
             auto_review_default=False,
-            llm_providers=default_llm_providers_from_env(
-                cursor_api_key=getattr(env_settings, "cursor_api_key", ""),
-                cursor_model=getattr(env_settings, "cursor_model", DEFAULT_CURSOR_MODEL),
-                openai_api_key=getattr(env_settings, "llm_api_key", ""),
-                openai_base_url=getattr(env_settings, "llm_base_url", DEFAULT_LLM_BASE_URL),
-                openai_model=getattr(env_settings, "llm_model", DEFAULT_LLM_MODEL),
+            llm_providers=base_providers,
+            llm_analyze_providers=stage_llm_providers_from_env(
+                base_providers,
+                cursor_model=getattr(env_settings, "cursor_analyze_model", ""),
+                openai_model=getattr(env_settings, "llm_analyze_model", ""),
+            ),
+            llm_code_providers=stage_llm_providers_from_env(
+                base_providers,
+                cursor_model=getattr(env_settings, "cursor_code_model", ""),
+                openai_model=getattr(env_settings, "llm_code_model", ""),
             ),
             scan_concurrency=int(getattr(env_settings, "appgen_scan_concurrency", DEFAULT_SCAN_CONCURRENCY)),
             scan_max_concurrency=int(
@@ -369,8 +436,21 @@ class RuntimeSettingsManager:
                 openai_base_url=getattr(env_settings, "llm_base_url", DEFAULT_LLM_BASE_URL),
                 openai_model=getattr(env_settings, "llm_model", DEFAULT_LLM_MODEL),
             )
+            base = self._data.llm_providers
+            self._data.llm_analyze_providers = stage_llm_providers_from_env(
+                base,
+                cursor_model=getattr(env_settings, "cursor_analyze_model", ""),
+                openai_model=getattr(env_settings, "llm_analyze_model", ""),
+            )
+            self._data.llm_code_providers = stage_llm_providers_from_env(
+                base,
+                cursor_model=getattr(env_settings, "cursor_code_model", ""),
+                openai_model=getattr(env_settings, "llm_code_model", ""),
+            )
             if mode == LLM_PROVIDER_MOCK:
                 self._data.llm_providers = []
+                self._data.llm_analyze_providers = []
+                self._data.llm_code_providers = []
             self._data.scan_concurrency = int(getattr(env_settings, "appgen_scan_concurrency", DEFAULT_SCAN_CONCURRENCY))
             self._data.scan_max_concurrency = int(
                 getattr(env_settings, "appgen_scan_max_concurrency", DEFAULT_SCAN_MAX_CONCURRENCY)
@@ -417,21 +497,27 @@ class RuntimeSettingsManager:
 
     def to_public_dict(self) -> dict[str, Any]:
         rc = self.get()
-        providers_public = []
-        for item in rc.llm_providers:
-            providers_public.append(
-                {
-                    "provider": item.provider,
-                    "api_key_set": _is_real_secret(item.api_key, PLACEHOLDER_OPENAI_KEY)
-                    or _is_real_secret(item.api_key, PLACEHOLDER_CURSOR_KEY),
-                    "api_key_preview": _mask_secret(item.api_key)["preview"],
-                    "base_url": item.base_url,
-                    "model": item.model,
-                }
-            )
+
+        def providers_public(items: list[LLMProviderConfig]) -> list[dict[str, Any]]:
+            rows: list[dict[str, Any]] = []
+            for item in items:
+                rows.append(
+                    {
+                        "provider": item.provider,
+                        "api_key_set": _is_real_secret(item.api_key, PLACEHOLDER_OPENAI_KEY)
+                        or _is_real_secret(item.api_key, PLACEHOLDER_CURSOR_KEY),
+                        "api_key_preview": _mask_secret(item.api_key)["preview"],
+                        "base_url": item.base_url,
+                        "model": item.model,
+                    }
+                )
+            return rows
+
         return {
             "auto_review_default": rc.auto_review_default,
-            "llm_providers": providers_public,
+            "llm_providers": providers_public(rc.llm_providers),
+            "llm_analyze_providers": providers_public(rc.llm_analyze_providers),
+            "llm_code_providers": providers_public(rc.llm_code_providers),
             "llm_provider_mode": rc.llm_provider_mode,
             "rss_marketing_url": rc.rss_marketing_url,
             "rss_legacy_top_url": rc.rss_legacy_top_url,
@@ -516,6 +602,10 @@ class RuntimeSettingsManager:
                 continue
             if key == "llm_providers" and isinstance(value, list):
                 merged[key] = self._merge_llm_providers(current.get("llm_providers", []), value)
+            elif key == "llm_analyze_providers" and isinstance(value, list):
+                merged[key] = self._merge_llm_providers(current.get("llm_analyze_providers", []), value)
+            elif key == "llm_code_providers" and isinstance(value, list):
+                merged[key] = self._merge_llm_providers(current.get("llm_code_providers", []), value)
             elif key == "serper_api_key" and value == "":
                 continue
             elif key.endswith("_api_key") and value == "":

@@ -4,6 +4,7 @@ import asyncio
 import json
 
 from appgen.config import settings
+from appgen.constants import LLM_PROFILE_CODE
 from appgen.agents.base import BaseAgent
 from appgen.models import BuildReport, DevCodeFixOutput, PipelineRun, PipelineStage
 from appgen.tools.ios_project import run_xcode_build, sanitize_product_name, write_swift_files
@@ -111,4 +112,4 @@ class DevVerifyAgent(BaseAgent):
             f"PRD 产品: {run.prd.product_name if run.prd else ''}\n"
             f"开发计划:\n{json.dumps(run.dev_plan.model_dump(), ensure_ascii=False, indent=2) if run.dev_plan else '{}'}"
         )
-        return self.llm.chat_json(system, user, DevCodeFixOutput)
+        return self.llm.chat_json(system, user, DevCodeFixOutput, profile=LLM_PROFILE_CODE)

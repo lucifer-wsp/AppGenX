@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from appgen.agents.base import BaseAgent
+from appgen.constants import LLM_PROFILE_CODE
 from appgen.models import DevCodeManifest, DevCodeOutput, PipelineRun, PipelineStage
 from appgen.tools.ios_project import sanitize_product_name, write_swift_files
 from appgen.tools.ios_standards import IOS_PRODUCTION_CODING_RULES
@@ -94,6 +95,7 @@ class DevCodeAgent(BaseAgent):
                 user,
                 DevCodeOutput,
                 on_progress=on_progress,
+                profile=LLM_PROFILE_CODE,
             )
             pairs = [(f.relative_path, f.content) for f in output.files if f.relative_path and f.content]
             if pairs:

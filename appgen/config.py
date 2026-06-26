@@ -37,7 +37,12 @@ class Settings(BaseSettings):
 
     cursor_api_key: str = ""
     cursor_model: str = DEFAULT_CURSOR_MODEL
+    cursor_analyze_model: str = ""
+    cursor_code_model: str = ""
     cursor_cwd: Path | None = None
+
+    llm_analyze_model: str = ""
+    llm_code_model: str = ""
 
     serper_api_key: str = ""
 
